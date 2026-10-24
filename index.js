@@ -521,9 +521,7 @@ async function startBot(){
 
   installSeasonReset(client,{
     guildId:IDS.GUILD_ID,
-    roleIds:process.env.SEASON_RESET_ROLE_IDS
-      ? process.env.SEASON_RESET_ROLE_IDS.split(',').map(id=>id.trim()).filter(Boolean)
-      : IDS.ADMIN_ROLE_IDS,
+    roleIds:[...new Set(['1560384331858452560',...(process.env.SEASON_RESET_ROLE_IDS || '').split(',').map(id=>id.trim()).filter(Boolean)])],
     audit:entry=>mutate(db=>{db.audit.push({at:Date.now(),...entry});})
   });
   installSupportAnnouncements(client,IDS.GUILD_ID,frontendUrl);

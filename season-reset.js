@@ -20,20 +20,24 @@ export function resetTargets(guild, actorId, members, channels, roles = guild.ro
 export function installSeasonReset(client, {guildId, roleIds, audit}) {
   const pending = new Map();
   let running = false;
-  client.once(Events.ClientReady, async () => {
+  async function registerCommand(attempt = 1) {
+    console.log('[season-reset] Registering command', {guildId,botId:client.user?.id,attempt});
     try {
       const guild = await client.guilds.fetch(guildId);
-      const commands = await guild.commands.fetch();
-      const data = {
-        name: 'season-reset',
-        description: 'معاينة تصفير سيزون NEXUS ثم تأكيد حذف الرومات والرتب وطرد الأعضاء',
-        options: [{type:3,name:'confirm',description:'كود التأكيد الظاهر بعد المعاينة، صالح دقيقتين',required:false}]
-      };
-      const existing = commands.find(c => c.name === data.name);
-      if (existing) await guild.commands.edit(existing.id,data);
-      else await guild.commands.create(data);
-    } catch (error) { console.error('[season-reset] Command registration failed:',error.message); }
-  });
+      // Discord upserts commands with the same name. Avoid fetching the full list first.
+      const command = await guild.commands.create({
+        name:'season-reset',
+        description:'معاينة تصفير سيزون NEXUS ثم تأكيد حذف الرومات والرتب وطرد الأعضاء',
+        options:[{type:3,name:'confirm',description:'كود التأكيد الظاهر بعد المعاينة، صالح دقيقتين',required:false}]
+      });
+      console.log('[season-reset] Registered successfully', {guildId,commandId:command.id,roleIds});
+    } catch (error) {
+      console.error('[season-reset] Command registration failed:', {code:error.code,status:error.status,message:error.message});
+      if (attempt < 3) setTimeout(()=>registerCommand(attempt+1),15000).unref();
+    }
+  }
+  if (client.isReady()) void registerCommand();
+  else client.once(Events.ClientReady,()=>registerCommand());
   client.on(Events.InteractionCreate, async i => {
     if (!i.isChatInputCommand() || i.commandName !== 'season-reset') return;
     try {
