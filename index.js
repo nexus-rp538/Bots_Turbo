@@ -1,3 +1,4 @@
+import { installSeasonReset } from './season-reset.js';
 import {reviewApplication, reviewState, reviewDiscordText} from './ai-review.js';
 import {installMemberWelcome} from './member-welcome.js';
 import { OWNER_IDS, isOwnerId, resolveFrontendUrl, BUILD_ID, SUPPORT_AUDIO_FILE } from './branding.js';
@@ -518,6 +519,13 @@ async function startBot(){
   if(!process.env.DISCORD_BOT_TOKEN){console.warn('DISCORD_BOT_TOKEN is missing. Bot disabled.');return null}
   client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildVoiceStates]});
 
+  installSeasonReset(client,{
+    guildId:IDS.GUILD_ID,
+    roleIds:process.env.SEASON_RESET_ROLE_IDS
+      ? process.env.SEASON_RESET_ROLE_IDS.split(',').map(id=>id.trim()).filter(Boolean)
+      : IDS.ADMIN_ROLE_IDS,
+    audit:entry=>mutate(db=>{db.audit.push({at:Date.now(),...entry});})
+  });
   installSupportAnnouncements(client,IDS.GUILD_ID,frontendUrl);
   installMemberWelcome(client,{guildId:IDS.GUILD_ID,frontendUrl});
   client.once(Events.ClientReady,async c=>{
