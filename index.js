@@ -517,7 +517,7 @@ async function createJobTicket(job){
 
 async function startBot(){
   if(!process.env.DISCORD_BOT_TOKEN){console.warn('DISCORD_BOT_TOKEN is missing. Bot disabled.');return null}
-  client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildVoiceStates]});
+  client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildVoiceStates,...(process.env.SEASON_RESET_TEXT_ENABLED === 'true' ? [GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent] : [])]});
 
   installSeasonReset(client,{
     guildId:IDS.GUILD_ID,

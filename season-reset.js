@@ -17,6 +17,11 @@ export function resetTargets(guild, actorId, members, channels, roles = guild.ro
   };
 }
 
+export function parseResetMessage(content) {
+  const match = /^season-reset(?:\s+([a-f0-9]{8}))?$/i.exec(String(content || '').trim());
+  return match ? {confirm:match[1] || null} : null;
+}
+
 export function installSeasonReset(client, {guildId, roleIds, audit}) {
   const pending = new Map();
   let running = false;
@@ -38,7 +43,7 @@ export function installSeasonReset(client, {guildId, roleIds, audit}) {
   }
   if (client.isReady()) void registerCommand();
   else client.once(Events.ClientReady,()=>registerCommand());
-  client.on(Events.InteractionCreate, async i => {
+  async function handleReset(i) {
     if (!i.isChatInputCommand() || i.commandName !== 'season-reset') return;
     try {
       if (i.guildId !== guildId) return await i.reply({content:'الأمر متاح في سيرفر NEXUS المحدد فقط.',ephemeral:true});
@@ -69,16 +74,16 @@ export function installSeasonReset(client, {guildId, roleIds, audit}) {
           targets
         };
         const skipped = members.size-targets.members.length;
-        pending.set(i.user.id,{token,expires:Date.now()+120000,targets});
+        pending.set(i.user.id,{token,expires:Date.now()+120000,targets,channelId:i.channelId});
         for (const [id,p] of pending) if (p.expires < Date.now()) pending.delete(id);
         await audit({action:'season_reset_preview',by:i.user.id,channels:targets.channels.length,roles:targets.roles.length,members:targets.members.length});
         return await i.editReply({
-          content:`تصفير سيزون NEXUS\nهيتم حذف ${targets.channels.length} روم/كاتجوري ورسائل الرومات المحذوفة، وطرد ${targets.members.length} عضو.\nالمستثنون: ${skipped} (المالك، منفذ الأمر، البوتات، وأي عضو أعلى من صلاحية البوت).\nهيتم حذف ${targets.roles.length} رتبة قابلة للحذف. رتب البوتات و@everyone والرتب الأعلى من البوت مستثناة بقيود ديسكورد. بيانات الموقع تفضل موجودة. الملف المرفق وصف للإعدادات والأعضاء، وليس نسخة من الرسائل ولا يقدر يرجع الأعضاء تلقائيًا.\nللتنفيذ خلال دقيقتين استخدم /season-reset واكتب في confirm: ${token}\nتجاهل الكود للإلغاء. الحذف نهائي.`,
+          content:`تصفير سيزون NEXUS\nهيتم حذف ${targets.channels.length} روم/كاتجوري ورسائل الرومات المحذوفة، وطرد ${targets.members.length} عضو.\nالمستثنون: ${skipped} (المالك، منفذ الأمر، البوتات، وأي عضو أعلى من صلاحية البوت).\nهيتم حذف ${targets.roles.length} رتبة قابلة للحذف. رتب البوتات و@everyone والرتب الأعلى من البوت مستثناة بقيود ديسكورد. بيانات الموقع تفضل موجودة. الملف المرفق وصف للإعدادات والأعضاء، وليس نسخة من الرسائل ولا يقدر يرجع الأعضاء تلقائيًا.\nللتنفيذ خلال دقيقتين في نفس الروم ابعت: season-reset ${token} (أو استخدم /season-reset مع confirm)\nتجاهل الكود للإلغاء. الحذف نهائي.`,
           files:[new AttachmentBuilder(Buffer.from(JSON.stringify(snapshot,null,2)),{name:'nexus-season-snapshot.json'})]
         });
       }
       const plan = pending.get(i.user.id);
-      if (!plan || plan.expires < Date.now() || confirmation !== plan.token) return await i.editReply('كود غير صحيح أو انتهى. نفذ الأمر بدون confirm لمعاينة جديدة.');
+      if (!plan || plan.expires < Date.now() || confirmation !== plan.token || plan.channelId !== i.channelId) return await i.editReply('كود غير صحيح أو انتهى. نفذ الأمر بدون confirm لمعاينة جديدة.');
       running = true;
       pending.clear();
       const result = {action:'season_reset_complete',by:i.user.id,kicked:[],deleted:[],rolesDeleted:[],failed:[]};
@@ -123,5 +128,32 @@ export function installSeasonReset(client, {guildId, roleIds, audit}) {
       if (i.deferred || i.replied) await i.editReply(payload).catch(()=>{});
       else await i.reply(payload).catch(()=>{});
     }
+  }
+  client.on(Events.InteractionCreate,handleReset);
+  client.on(Events.MessageCreate,async message=>{
+    if (message.author.bot || message.webhookId || message.guildId !== guildId) return;
+    const parsed = parseResetMessage(message.content);
+    if (!parsed) return;
+    let response;
+    const adapter = {
+      guildId:message.guildId,guild:message.guild,user:message.author,
+      channelId:message.channelId,deferred:false,replied:false,
+      isChatInputCommand:()=>true,commandName:'season-reset',
+      options:{getString:()=>parsed.confirm},
+      async reply(payload) {
+        const {ephemeral,...body}=payload;
+        response=await message.reply({...body,allowedMentions:{parse:[],repliedUser:false}});
+        this.replied=true;
+      },
+      async deferReply() {
+        await this.reply({content:'جاري فحص الصلاحيات وتجهيز الطلب...'});
+        this.deferred=true;
+      },
+      async editReply(payload) {
+        const {ephemeral,...body}=typeof payload==='string'?{content:payload}:payload;
+        return response.edit({...body,allowedMentions:{parse:[],repliedUser:false}});
+      }
+    };
+    await handleReset(adapter);
   });
 }
